@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spherical Flow Matching | Aligning Latent Geometry</title>
+  <meta name="description"
+    content="Project page for Aligning Latent Geometry for Spherical Flow Matching in Image Generation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Source+Sans+3:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+
+<body>
+  <main class="page">
+    <header class="hero" id="top">
+      <p class="venue">Preprint 2026</p>
+      <h1>Aligning Latent Geometry for Spherical Flow Matching in Image Generation</h1>
+      <p class="authors">
+        Tuna Han Salih Meral<sup>1</sup>* ·
+        Adil Kaan Akan<sup>2</sup> ·
+        Hidir Yesiltepe<sup>1</sup> ·
+        Kaan Oktay<sup>2</sup>* ·
+        Pinar Yanardag<sup>1</sup>
+      </p>
+      <p class="affiliation"><sup>1</sup>Virginia Tech &nbsp;·&nbsp; <sup>2</sup>fal</p>
+      <p class="author-note">* Contact: <a href="mailto:tmeral@vt.edu">tmeral@vt.edu</a>, <a
+          href="mailto:kaan@fal.ai">kaan@fal.ai</a></p>
+
+      <div class="links">
+        <a href="#" target="_blank" rel="noreferrer">Paper</a>
+        <a href="#" target="_blank" rel="noreferrer">arXiv</a>
+        <a href="#" target="_blank" rel="noreferrer">Code</a>
+      </div>
+    </header>
+
+    <section class="section" id="tldr">
+      <h2>🚀 TL;DR</h2>
+      <p class="lead">
+        <strong>Latent flow matching ignores the geometry of VAE latents.</strong>
+        Both Gaussian noise and VAE latent tokens concentrate on thin spherical shells, yet linear flow matching
+        transports them with a straight line that leaves those shells and spends much of its training signal on radial
+        motion the decoder barely uses. We project each VAE token onto a fixed-radius sphere, finetune only the decoder,
+        and replace linear paths with spherical linear interpolation (slerp). The diffusion architecture is unchanged,
+        no auxiliary encoder is needed, and class-conditional ImageNet-256 FID improves across FLUX.2, VA-VAE, and
+        REPA-E FLUX.1 tokenizers at both SiT-B and SiT-XL scales.
+      </p>
+      <div class="contrib-row" aria-label="Main contributions">
+        <article class="contrib-box">
+          <h4>Spherical latent projection</h4>
+          <p>aligns VAE tokens with the Gaussian shell.</p>
+        </article>
+        <article class="contrib-box">
+          <h4>Slerp transport</h4>
+          <p>keeps the path on the sphere, velocity tangent.</p>
+        </article>
+        <article class="contrib-box">
+          <h4>Drop-in for pretrained VAEs</h4>
+          <p>decoder-only finetune, unchanged SiT, no aux encoder.</p>
+        </article>
+      </div>
+
+      <div class="figure-triple" aria-label="Latent transport comparison">
+        <figure>
+          <img src="assets/figures/1a_vanilla_linear.png" alt="Linear flow matching cuts through the shell interior">
+          <figcaption><strong>(a) Linear.</strong> Straight line between two shell points cuts through the interior.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/figures/1c_spherical_slerp.png" alt="Spherical slerp stays on the sphere">
+          <figcaption><strong>(b) Spherical (Ours).</strong> Both endpoints on a shared sphere; slerp stays on it.
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/figures/flux2_b2_ablation_2curve_square.png"
+            alt="FID training curves comparing linear vs. spherical slerp">
+          <figcaption><strong>(c) FID, SiT-B/2, FLUX.2.</strong> Slerp reaches vanilla FID=30 in <strong>~2.2×
+              fewer</strong> training steps.</figcaption>
+        </figure>
+      </div>
+      <p class="figure-caption-note">
+        <strong>Figure 1.</strong> Linear latent flow matching connects Gaussian noise to a VAE latent with a straight
+        line. Although both endpoints concentrate on thin shells, the line passes through interior radii rarely
+        occupied by either endpoint. We project data latents and sample noise on a shared fixed-radius sphere, then
+        train along the spherical arc.
+      </p>
+    </section>
+
+    <section class="section" id="motivation">
+      <h2>🤔 Motivation</h2>
+      <p>
+        Latent diffusion models do not generate pixels directly; they model the coordinate system produced by a
+        pretrained VAE. The shape of that latent distribution defines the space the generator must traverse, yet
+        standard latent flow matching treats it as plain Euclidean space and transports Gaussian noise to encoded data
+        along straight lines. This overlooks two structural facts about VAE latents: their tokens concentrate in thin
+        spherical shells, and the decoder reacts mainly to a token's <em>direction</em> rather than its <em>length</em>.
+        Flow matching pays for both in image quality.
+      </p>
+
+      <h3>VAE tokens and Gaussian noise both live on thin shells</h3>
+      <p>
+        In high dimensions, samples from \(\mathcal{N}(0, I_d)\) concentrate near a shell of radius \(\sqrt{d}\), with
+        relative thickness \(\mathcal{O}(1/\sqrt{d})\). Encoded VAE tokens behave the same way: across FLUX.2, VA-VAE,
+        and REPA-E FLUX.1, per-token norms have a coefficient of variation under 0.23 both raw and after each pipeline's
+        preprocessing. After preprocessing, FLUX.2 and VA-VAE sit close to the Gaussian shell, while REPA-E FLUX.1 sits
+        well below. Spherical projection collapses all three to \(\bar r / \sqrt d = 1\) with zero variation:
+        preprocessing is partial, projection is universal.
+      </p>
+
+      <div class="figure-duo">
+        <figure>
+          <img src="assets/figures/latent_norm_all.png"
+            alt="Per-token norms along linear, shell, and slerp paths for three tokenizers">
+          <figcaption><strong>(a)</strong> Per-token norm along linear, shell, and slerp paths. Lines average 2048
+            pairs; bands show ±1σ; the horizontal reference is the fixed spherical radius.</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/figures/latent_ood_all.png"
+            alt="Off-shell distance for each path measured in standard deviations">
+          <figcaption><strong>(b)</strong> Off-shell distance, in σ from the nearest endpoint shell. Linear paths
+            deviate up to 2.5σ; slerp stays at the fixed radius throughout.</figcaption>
+        </figure>
+      </div>
+      <p class="figure-caption-note">
+        <strong>Figure 2.</strong> Linear paths can dip away from the endpoint shells; shell paths interpolate
+        token radii; spherical-slerp stays on the fixed-radius sphere at every timestep.
+      </p>
+
+      <h3>The decoder reads direction, not length</h3>
+      <p>
+        We probe what part of a latent token the decoder actually uses. For an anchor token \(z_a = r_a \hat z_a\) and
+        a same-position token \(z_n = r_n \hat z_n\) from a same-class neighbor, we form two hybrids: <em>anchor
+        direction, neighbor radius</em> (\(r_n \hat z_a\)) and <em>anchor radius, neighbor direction</em> (\(r_a \hat
+        z_n\)). Keeping the anchor direction leaves the decoded image close to the anchor; keeping only the anchor
+        radius moves it almost as far as replacing the whole latent. The asymmetry shows up on both LPIPS and DINOv2
+        distances.
+      </p>
+      <figure class="figure-medium">
+        <img src="assets/figures/component_ablation_gap_sameclass_main.png"
+          alt="Angular vs. radial decoder sensitivity across three tokenizers">
+        <figcaption><strong>Figure 3.</strong> Angular/radial decoder sensitivity. Swapping radius with a same-class
+          neighbor preserves the original decode; swapping direction moves toward the neighbor. Markers average 1024
+          anchors.</figcaption>
+      </figure>
+
+      <h3>Linear flow matching spends supervision on radial motion</h3>
+      <p>
+        The per-token velocity target \(u_t = \dot z_t\) decomposes into a radial part (changing the token's distance
+        from the origin) and a tangential part (changing its direction). Under linear flow matching this radial share
+        accounts for roughly half of the training signal for FLUX.2 and VA-VAE near the endpoints, and reaches about
+        90% at the noise endpoint for REPA-E FLUX.1. Slerp on the sphere makes the radial share <em>identically zero</em>
+        by construction.
+      </p>
+      <figure class="figure-medium">
+        <img src="assets/figures/flow_radial_energy_share_main.png"
+          alt="Radial share of the flow-matching velocity target over time">
+        <figcaption><strong>Figure 4.</strong> Radial share of the flow-matching velocity target, in each tokenizer's
+          flow-training coordinates. Linear paths spend substantial supervision on radial motion; slerp has zero radial
+          velocity by construction.</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="method">
+      <h2>🗺️ Method</h2>
+      <p>
+        Our recipe has two parts. First, we make the VAE latent space spherical by inserting a token-wise \(L_2\)
+        projection at the encoder output and finetuning only the decoder. Second, we train flow matching along
+        spherical-linear-interpolation (slerp) geodesics, with the velocity target and the model output projected onto
+        the tangent space of the sphere.
+      </p>
+
+      <h3>Spherical latent projection</h3>
+      <p>
+        Given a pretrained encoder \(\mathcal{E}\) with token dimension \(d\), define
+        \(\pi:\mathbb{R}^d \to \mathcal{S}^{d-1}(\sqrt d)\) by \(\pi(z) = \sqrt d\, z/\|z\|\) and apply it independently
+        at each spatial position:
+      </p>
+      <div class="equation-display">
+        \( z_{i,j} \leftarrow \sqrt{d} \cdot \dfrac{z_{i,j}}{\|z_{i,j}\|}, \quad \|z_{i,j}\| = \sqrt{d}. \)
+      </div>
+      <p>
+        The radius \(\sqrt d\) matches the concentration radius of a standard Gaussian in \(d\) dimensions, aligning the
+        projected latent scale with the noise prior. We freeze the encoder, insert the projection at its output, and
+        finetune the decoder and discriminator with the original pixel \(L_1\), LPIPS, and patch-adversarial losses.
+        The KL term is dropped (the encoder is frozen and the projected latent is deterministic), and for VA-VAE the
+        DINOv2 alignment terms are removed (their gradient through a frozen encoder is zero). We finetune for five
+        epochs on ImageNet.
+      </p>
+
+      <h3>Slerp transport on the sphere</h3>
+      <p>
+        With both endpoints on \(\mathcal{S}^{d-1}(\sqrt d)\), the unique shortest geodesic between them is the
+        spherical-linear-interpolation arc:
+      </p>
+      <div class="equation-display">
+        \( z_t \;=\; \sqrt{d}\left( \dfrac{\sin((1-t)\omega)}{\sin\omega}\,\hat z_0 +
+        \dfrac{\sin(t\omega)}{\sin\omega}\,\hat z_1 \right), \qquad \omega = \arccos\langle \hat z_0, \hat z_1 \rangle.
+        \)
+      </div>
+      <p>
+        For the noise endpoint we use the radial projection of an isotropic Gaussian: \(z_0 = \sqrt d\,\epsilon/\|
+        \epsilon\|\) with \(\epsilon \sim \mathcal{N}(0, I_d)\). By rotational invariance, \(z_0\) is uniform on
+        \(\mathcal{S}^{d-1}(\sqrt d)\), so the spherical noise endpoint is the angular component of the very same
+        Gaussian prior used by the linear baseline.
+      </p>
+      <p>
+        The conditional velocity field is the time derivative of \(z_t\), projected onto the tangent space
+        \(T_{z_t}\mathcal{S}^{d-1}(\sqrt d)\):
+      </p>
+      <div class="equation-display">
+        \( u_t = \dot z_t, \qquad u_t \leftarrow u_t - \dfrac{\langle u_t, z_t \rangle}{\|z_t\|^2}\, z_t. \)
+      </div>
+      <p>
+        In exact arithmetic, the slerp time-derivative already lies in the tangent space; the projection is a numerical
+        safeguard on the target and a hard tangency constraint on the model output \(v_\theta\). The training loss is
+        the standard flow-matching objective with both sides projected to the tangent space:
+      </p>
+      <div class="equation-display">
+        \( \mathcal{L}_{\text{slerp}} = \mathbb{E}_{t,\,z_0,\,z_1}\!\left[\big\|\Pi_{z_t} v_\theta(z_t, t, y) -
+        \Pi_{z_t}\, u_t\big\|^2\right], \quad \Pi_{z_t} v = v - \dfrac{\langle v, z_t\rangle}{\|z_t\|^2} z_t. \)
+      </div>
+
+      <h3>Sphere-preserving sampler</h3>
+      <p>
+        At inference we integrate with the exponential map on the sphere:
+        \(z_{t+\Delta t} = \exp_{z_t}\!\big(\Pi_{z_t}\, v_\theta(z_t, t, y)\,\Delta t\big)\). This step stays on the
+        sphere by construction and has a closed-form trigonometric expression, adding negligible cost. The sampler is
+        matched to the slerp training target: a single exponential-map step with a perfect predictor lands exactly on
+        the next slerp point, whereas an Euler step followed by radial renormalization advances only by
+        \(\sqrt d\arctan(\Delta t\,\omega)\) and suffers a one-step deficit.
+      </p>
+
+      <h3>What's <em>not</em> changed</h3>
+      <p>
+        The diffusion backbone (SiT) sees the spherical latents as ordinary vectors in \(\mathbb{R}^d\) and needs no
+        architectural changes. No auxiliary encoder is used during diffusion training or inference, unlike methods that
+        diffuse in the feature space of a frozen DINOv2. The projection composes with both representation-aligned
+        (VA-VAE, REPA-E FLUX.1) and non-aligned (FLUX.2) tokenizers.
+      </p>
+    </section>
+
+    <section class="section" id="results">
+      <h2>📈 Results</h2>
+
+      <h3>Ablation: latent support &amp; transport path</h3>
+      <p>
+        On SiT-B/2 with the FLUX.2 VAE, the spherical projection alone explains most of the gain over vanilla-linear
+        flow matching; the slerp path on top gives the best result. Shell-decomposed transport on vanilla latents does
+        not improve the baseline: avoiding the inward chord dip is insufficient if the network is still asked to
+        predict both angular and radial velocity under a single objective.
+      </p>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Latent</th>
+            <th>Prior</th>
+            <th>Path</th>
+            <th>Tangent proj.</th>
+            <th>Sampler</th>
+            <th>FID (CFG=1.0)↓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Vanilla</td>
+            <td>Gaussian</td>
+            <td>Linear</td>
+            <td>off</td>
+            <td>Euler</td>
+            <td>26.35</td>
+          </tr>
+          <tr>
+            <td>Vanilla</td>
+            <td>Gaussian</td>
+            <td>Shell</td>
+            <td>off</td>
+            <td>Euler</td>
+            <td>27.26</td>
+          </tr>
+          <tr>
+            <td>Spherical</td>
+            <td>Uniform</td>
+            <td>Linear</td>
+            <td>off</td>
+            <td>Euler</td>
+            <td>22.85</td>
+          </tr>
+          <tr class="ours">
+            <td><strong>Spherical</strong></td>
+            <td><strong>Uniform</strong></td>
+            <td><strong>Slerp</strong></td>
+            <td><strong>on</strong></td>
+            <td><strong>Exp. map</strong></td>
+            <td><strong>20.55</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <figure class="figure-medium">
+        <img src="assets/figures/FLUX2_b2_ablation_4curve.png"
+          alt="FID-50K training curves for the latent-support and transport-path ablation">
+        <figcaption><strong>Figure 5.</strong> FID-50K at CFG=1.0 along the training trajectory. Spherical-slerp
+          reaches FID=30 in about <strong>2.2× fewer</strong> steps and continues to improve.</figcaption>
+      </figure>
+
+      <h3>Cross-tokenizer &amp; cross-scale gains</h3>
+      <p>
+        The spherical-slerp gain holds across tokenizer families, model scales, and guidance settings. FID-50K on
+        ImageNet-256 at 80 epochs:
+      </p>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Tokenizer</th>
+            <th>Scale</th>
+            <th>CFG</th>
+            <th>Linear</th>
+            <th>Slerp (Ours)</th>
+            <th>Rel. Δ</th>
+            <th>IS Linear</th>
+            <th>IS Slerp</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td rowspan="4">FLUX.2</td>
+            <td rowspan="2">B/2</td>
+            <td>1.0</td>
+            <td>26.14</td>
+            <td><strong>20.21</strong></td>
+            <td class="improve">−22.7%</td>
+            <td>52.5</td>
+            <td>66.5</td>
+          </tr>
+          <tr>
+            <td>1.5</td>
+            <td>9.99</td>
+            <td><strong>6.29</strong></td>
+            <td class="improve">−37.0%</td>
+            <td>141.8</td>
+            <td>169.7</td>
+          </tr>
+          <tr>
+            <td rowspan="2">XL/2</td>
+            <td>1.0</td>
+            <td>13.00</td>
+            <td><strong>10.71</strong></td>
+            <td class="improve">−17.6%</td>
+            <td>85.4</td>
+            <td>102.3</td>
+          </tr>
+          <tr>
+            <td>1.5</td>
+            <td>4.32</td>
+            <td><strong>3.95</strong></td>
+            <td class="improve">−8.6%</td>
+            <td>208.1</td>
+            <td>238.9</td>
+          </tr>
+          <tr>
+            <td rowspan="5">VA-VAE</td>
+            <td rowspan="3">B/1</td>
+            <td>1.0</td>
+            <td>26.99</td>
+            <td><strong>21.96</strong></td>
+            <td class="improve">−18.6%</td>
+            <td>49.0</td>
+            <td>58.2</td>
+          </tr>
+          <tr>
+            <td>1.5</td>
+            <td>10.86</td>
+            <td><strong>7.81</strong></td>
+            <td class="improve">−28.1%</td>
+            <td>120.7</td>
+            <td>143.4</td>
+          </tr>
+          <tr>
+            <td>2.0</td>
+            <td>6.84</td>
+            <td><strong>5.46</strong></td>
+            <td class="improve">−20.2%</td>
+            <td>199.6</td>
+            <td>231.6</td>
+          </tr>
+          <tr>
+            <td rowspan="2">XL/1</td>
+            <td>1.0</td>
+            <td>12.16</td>
+            <td><strong>10.36</strong></td>
+            <td class="improve">−14.8%</td>
+            <td>93.0</td>
+            <td>107.3</td>
+          </tr>
+          <tr>
+            <td>1.5</td>
+            <td>4.23</td>
+            <td><strong>3.88</strong></td>
+            <td class="improve">−8.2%</td>
+            <td>227.9</td>
+            <td>263.2</td>
+          </tr>
+          <tr>
+            <td rowspan="3">REPA-E FLUX.1</td>
+            <td rowspan="3">B/2</td>
+            <td>1.0</td>
+            <td>38.00</td>
+            <td><strong>26.07</strong></td>
+            <td class="improve">−31.4%</td>
+            <td>42.9</td>
+            <td>63.1</td>
+          </tr>
+          <tr>
+            <td>1.5</td>
+            <td>13.83</td>
+            <td><strong>6.88</strong></td>
+            <td class="improve">−50.2%</td>
+            <td>118.3</td>
+            <td>172.1</td>
+          </tr>
+          <tr>
+            <td>2.0</td>
+            <td>7.58</td>
+            <td><strong>5.43</strong></td>
+            <td class="improve">−28.4%</td>
+            <td>204.2</td>
+            <td>274.0</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Longer training: the lead persists</h3>
+      <p>
+        Extending FLUX.2 B/2 to 200 epochs at the same batch size confirms the advantage is not a short-budget
+        artifact. Both methods improve, and spherical-slerp remains ahead at both guidance settings.
+      </p>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>CFG=1.0</th>
+            <th>CFG=1.5</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Vanilla-linear</td>
+            <td>9.15</td>
+            <td>3.22</td>
+          </tr>
+          <tr class="ours">
+            <td><strong>Spherical-slerp (Ours)</strong></td>
+            <td><strong>8.35</strong></td>
+            <td><strong>2.91</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Reconstruction cost is modest</h3>
+      <p>
+        The fixed-radius projection introduces a small reconstruction penalty relative to a finetuned-vanilla control,
+        but the downstream FID improves substantially. Downstream generation always decodes through the matching
+        spherical decoder, so the gain cannot be attributed to a stronger decoder &mdash; a decoder-swap control rules
+        this out in both directions.
+      </p>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>VAE</th>
+            <th>d</th>
+            <th>f</th>
+            <th>Original</th>
+            <th>FT-vanilla</th>
+            <th>Spherical</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>FLUX.2</td>
+            <td>32</td>
+            <td>8</td>
+            <td>0.186</td>
+            <td>0.486</td>
+            <td>1.072</td>
+          </tr>
+          <tr>
+            <td>VA-VAE</td>
+            <td>32</td>
+            <td>16</td>
+            <td>0.298</td>
+            <td>1.116</td>
+            <td>1.064</td>
+          </tr>
+          <tr>
+            <td>REPA-E FLUX.1</td>
+            <td>16</td>
+            <td>8</td>
+            <td>0.209</td>
+            <td>0.759</td>
+            <td>0.824</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Reconstruction visuals</h3>
+      <figure class="figure-wide">
+        <img src="assets/figures/recon_flux2_3way.jpg"
+          alt="Reconstruction comparison on FLUX.2: original, FT-vanilla, spherical">
+        <figcaption><strong>Figure 6a.</strong> FLUX.2 reconstructions: original / FT-vanilla / spherical.</figcaption>
+      </figure>
+      <figure class="figure-wide">
+        <img src="assets/figures/recon_vavae_3way.jpg"
+          alt="Reconstruction comparison on VA-VAE: original, FT-vanilla, spherical">
+        <figcaption><strong>Figure 6b.</strong> VA-VAE reconstructions: original / FT-vanilla / spherical.</figcaption>
+      </figure>
+      <figure class="figure-wide">
+        <img src="assets/figures/recon_repae_flux_3way.jpg"
+          alt="Reconstruction comparison on REPA-E FLUX.1: original, FT-vanilla, spherical">
+        <figcaption><strong>Figure 6c.</strong> REPA-E FLUX.1 reconstructions: original / FT-vanilla / spherical.
+        </figcaption>
+      </figure>
+
+      <h3>Qualitative samples</h3>
+      <div class="sample-strip">
+        <img src="assets/samples/class_0019_chickadee.png" alt="ImageNet class: chickadee">
+        <img src="assets/samples/class_0037_box_turtle.png" alt="ImageNet class: box turtle">
+        <img src="assets/samples/class_0044_alligator_lizard.png" alt="ImageNet class: alligator lizard">
+        <img src="assets/samples/class_0158_toy_terrier.png" alt="ImageNet class: toy terrier">
+        <img src="assets/samples/class_0209_chesapeake_bay_retriever.png"
+          alt="ImageNet class: Chesapeake Bay retriever">
+        <img src="assets/samples/class_0256_newfoundland.png" alt="ImageNet class: Newfoundland">
+        <img src="assets/samples/class_0264_cardigan.png" alt="ImageNet class: cardigan">
+        <img src="assets/samples/class_0500_cliff_dwelling.png" alt="ImageNet class: cliff dwelling">
+        <img src="assets/samples/class_0562_fountain.png" alt="ImageNet class: fountain">
+        <img src="assets/samples/class_0675_moving_van.png" alt="ImageNet class: moving van">
+        <img src="assets/samples/class_0719_piggy_bank.png" alt="ImageNet class: piggy bank">
+        <img src="assets/samples/class_0756_rain_barrel.png" alt="ImageNet class: rain barrel">
+        <img src="assets/samples/class_0825_stone_wall.png" alt="ImageNet class: stone wall">
+        <img src="assets/samples/class_0928_ice_cream.png" alt="ImageNet class: ice cream">
+        <img src="assets/samples/class_0947_mushroom.png" alt="ImageNet class: mushroom">
+      </div>
+      <p class="figure-caption-note">
+        <strong>Figure 7.</strong> Class-conditional ImageNet-256 samples produced with the spherical-slerp recipe.
+      </p>
+
+      <h3>Component swaps across tokenizers</h3>
+      <figure class="figure-wide">
+        <img src="assets/figures/ablation_grid_flux2_sameclass.png"
+          alt="Same-class component swap grid for FLUX.2">
+        <figcaption><strong>Figure 8a.</strong> FLUX.2: anchor direction with neighbor radius vs. anchor radius with
+          neighbor direction.</figcaption>
+      </figure>
+      <figure class="figure-wide">
+        <img src="assets/figures/ablation_grid_vavae_sameclass.png"
+          alt="Same-class component swap grid for VA-VAE">
+        <figcaption><strong>Figure 8b.</strong> VA-VAE: same swaps. Direction dominates the decoded content.
+        </figcaption>
+      </figure>
+      <figure class="figure-wide">
+        <img src="assets/figures/ablation_grid_repae_flux_sameclass.png"
+          alt="Same-class component swap grid for REPA-E FLUX.1">
+        <figcaption><strong>Figure 8c.</strong> REPA-E FLUX.1: same swaps. Swapping radius is nearly identity; swapping
+          direction moves toward the neighbor.</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="citation">
+      <h2>🎓 Citation</h2>
+      <p>If you find this work useful, please cite us.</p>
+      <pre><code class="language-bibtex">@article{meral2026spherical,
+  title={Aligning Latent Geometry for Spherical Flow Matching in Image Generation},
+  author={Meral, Tuna Han Salih and Akan, Adil Kaan and Yesiltepe, Hidir and Oktay, Kaan and Yanardag, Pinar},
+  journal={arXiv preprint},
+  year={2026}
+}</code></pre>
+    </section>
+
+    <footer class="visitor-map" aria-label="Visitor map">
+      <p style="font-size:0.85rem;color:var(--muted);text-align:center;margin:0;">
+        Virginia Tech · fal &nbsp;·&nbsp; 2026
+      </p>
+    </footer>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bibtex.min.js"></script>
+</body>
+
+</html>
