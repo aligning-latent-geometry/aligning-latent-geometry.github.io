@@ -620,6 +620,10 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bibtex.min.js"></script>
+  <script type="module">
+    import { initHeroPlots } from './assets/js/hero-plots.js';
+    window.__heroPlots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
+  </script>
 </body>
 
 </html>
