@@ -148,8 +148,8 @@
           </div>
         </article>
 
-        <article class="evidence-item media-item">
-          <div>
+        <article class="evidence-item evidence-item-wide media-item">
+          <div class="evidence-copy-wide">
             <span class="item-index">02</span>
             <h3>Direction carries content.</h3>
             <p>
@@ -159,15 +159,47 @@
               much more sensitive to direction than to radius.
             </p>
           </div>
-          <figure class="figure-clean">
-            <img src="assets/figures/component_ablation_gap_sameclass_main.png"
-              alt="Angular and radial component swap sensitivity across FLUX.2, VA-VAE, and REPA-E FLUX.1">
-            <figcaption>Same-class component swaps across three tokenizers.</figcaption>
-          </figure>
+          <div class="swap-demo" id="swap-demo" aria-label="Decoder asymmetry under direction vs. radius swaps">
+            <div class="swap-grid">
+              <div class="swap-panel" data-panel="anchor">
+                <div class="swap-panel-label">
+                  Anchor
+                  <span class="swap-sub">original latent</span>
+                </div>
+                <img alt="Anchor decode">
+              </div>
+              <div class="swap-panel" data-panel="rad_swap">
+                <div class="swap-panel-label">
+                  Anchor direction
+                  <span class="swap-sub">+ neighbor radius</span>
+                </div>
+                <img alt="Radius-swap decode">
+              </div>
+              <div class="swap-panel" data-panel="dir_swap">
+                <div class="swap-panel-label">
+                  Anchor radius
+                  <span class="swap-sub">+ neighbor direction</span>
+                </div>
+                <img alt="Direction-swap decode">
+              </div>
+              <div class="swap-panel" data-panel="neighbor">
+                <div class="swap-panel-label">
+                  Neighbor
+                  <span class="swap-sub">same-class latent</span>
+                </div>
+                <img alt="Neighbor decode">
+              </div>
+            </div>
+            <div class="swap-controls">
+              <button class="hero-anim-btn" data-swap-toggle aria-pressed="true">Pause</button>
+              <p class="swap-caption" data-swap-caption></p>
+            </div>
+            <figcaption>FLUX.2 decoder, same-class swaps (paper Fig. 5). Highlighted pair = matched percept.</figcaption>
+          </div>
         </article>
 
-        <article class="evidence-item media-item">
-          <div>
+        <article class="evidence-item evidence-item-wide media-item">
+          <div class="evidence-copy-wide">
             <span class="item-index">03</span>
             <h3>Linear targets waste radial budget.</h3>
             <p>
@@ -388,10 +420,12 @@
     import { initHeroPlots } from './assets/js/hero-plots.js';
     import { initHeroSphere } from './assets/js/hero-sphere.js';
     import { initVelocityDecomp } from './assets/js/velocity-decomp.js';
+    import { initSwapDemo } from './assets/js/swap-demo.js';
 
     const plots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
     initHeroSphere('#hero-anim-linear', '#hero-anim-slerp', { onT: (t) => plots.update(t) });
     initVelocityDecomp();
+    initSwapDemo();
   </script>
 </body>
 
