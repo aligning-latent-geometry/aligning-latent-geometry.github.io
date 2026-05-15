@@ -745,3 +745,28 @@ code {
   .hero-anim-grid { grid-template-columns: 1fr; }
   .hero-anim-canvas { min-height: 320px; }
 }
+
+/* Concentration demo */
+.conc-demo {
+  margin-top: 0.8rem;
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+.conc-controls {
+  display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  padding: 0.55rem 0.75rem; border: 1px solid var(--line); border-radius: 8px;
+  background: #f8faff; font-size: 0.92rem;
+}
+.conc-controls input[type="range"] { flex: 1; min-width: 200px; }
+.conc-shell { color: var(--muted); font-variant-numeric: tabular-nums; }
+.conc-canvas-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem;
+}
+.conc-fig { margin: 0; }
+.conc-fig canvas {
+  width: 100%; height: auto; background: #fff;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.conc-fig figcaption { font-size: 0.85rem; text-align: left; margin-top: 0.4rem; }
+@media (max-width: 800px) {
+  .conc-canvas-row { grid-template-columns: 1fr; }
+}

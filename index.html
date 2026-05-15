@@ -123,6 +123,35 @@
       </p>
     </section>
 
+    <section class="section" id="concentration">
+      <h2>📐 Why both endpoints live on shells</h2>
+      <p>
+        In high dimensions, samples from \(\mathcal{N}(0, I_d)\) concentrate near a thin shell of radius \(\sqrt d\).
+        Drag the slider to see how the distribution of \(\|z\|\) collapses from a wide spread (low <em>d</em>) into a
+        sharp spike at \(\sqrt d\) (high <em>d</em>). The strip below the histogram reports the Gaussian coefficient of
+        variation at the current <em>d</em> alongside the paper's measured CVs for the three VAE tokenizers (Table 1):
+        by <em>d</em> ≈ 32 the Gaussian is already as concentrated as the processed VAE latents.
+      </p>
+      <div class="conc-demo" aria-label="Concentration of measure interactive demo">
+        <div class="conc-controls">
+          <label>dimension d: <strong id="conc-d-val">32</strong></label>
+          <input id="conc-d" type="range" min="0" max="7" step="1" value="5"
+            aria-label="Dimension exponent — values map to d in {2,4,8,16,32,64,128,256}" />
+          <span class="conc-shell">√d = <strong id="conc-shell">5.66</strong></span>
+        </div>
+        <div class="conc-canvas-row">
+          <figure class="conc-fig">
+            <canvas id="conc-scatter" width="480" height="320"></canvas>
+            <figcaption>2D projection (first two coords) of 800 i.i.d. Gaussian samples.</figcaption>
+          </figure>
+          <figure class="conc-fig">
+            <canvas id="conc-hist" width="480" height="320"></canvas>
+            <figcaption>Histogram of \(\|z\|\). Dashed line marks \(\sqrt d\); the band narrows as <em>d</em> grows.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
     <section class="section" id="motivation">
       <h2>🤔 Motivation</h2>
       <p>
@@ -623,8 +652,10 @@
   <script type="module">
     import { initHeroPlots } from './assets/js/hero-plots.js';
     import { initHeroSphere } from './assets/js/hero-sphere.js';
+    import { initConcentrationDemo } from './assets/js/concentration-demo.js';
     const plots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
     initHeroSphere('#hero-anim-sphere', { onT: (t) => plots.update(t) });
+    initConcentrationDemo();
   </script>
 </body>
 
