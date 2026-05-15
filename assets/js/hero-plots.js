@@ -15,13 +15,6 @@ function linearPoint(t) {
   const y = t * SHELL * Math.sin(OMEGA);
   return [x, y];
 }
-function slerpPoint(t) {
-  const s0 = Math.sin((1 - t) * OMEGA) / Math.sin(OMEGA);
-  const s1 = Math.sin(t * OMEGA) / Math.sin(OMEGA);
-  const x = SHELL * (s0 + s1 * Math.cos(OMEGA));
-  const y = SHELL * (s1 * Math.sin(OMEGA));
-  return [x, y];
-}
 function norm([x, y]) { return Math.hypot(x, y); }
 
 // d/dt of linear path is constant (z1 - z0); its radial share at time t is
@@ -36,14 +29,12 @@ function radialShareLinear(t) {
   const rad = (ux * x + uy * y) / r;
   return (rad * rad) / uNorm2;
 }
-function radialShareSlerp(_t) { return 0; }
-
 function precompute(n = 200) {
   const ts = Array.from({ length: n + 1 }, (_, i) => i / n);
   return {
     ts,
-    normLin: ts.map(t => norm(linearPoint(t))),
-    normSlerp: ts.map(_ => SHELL),
+    normDistLin: ts.map(t => Math.abs(norm(linearPoint(t)) - SHELL)),
+    normDistSlerp: ts.map(_ => 0),
     radLin: ts.map(radialShareLinear),
     radSlerp: ts.map(_ => 0),
   };
@@ -121,12 +112,18 @@ function legend(ctx, items, x, y) {
 
 function setupCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const fallback = canvas.getBoundingClientRect();
+  const w = Math.max(1, canvas.clientWidth || fallback.width);
+  const h = Math.max(1, canvas.clientHeight || fallback.height);
+  const nextWidth = Math.floor(w * dpr);
+  const nextHeight = Math.floor(h * dpr);
+  if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { ctx, w: rect.width, h: rect.height };
+  return { ctx, w, h };
 }
 
 export function initHeroPlots(normSel, radialSel) {
@@ -139,25 +136,17 @@ export function initHeroPlots(normSel, radialSel) {
     lastT = t;
     {
       const { ctx, w, h } = setupCanvas(cNorm);
-      // With ω = π/2 and √d ≈ 5.66, the linear midpoint norm is √d/√2 ≈ 4.0; the
-      // path then climbs back to √d at t=1. yMin=3.5 leaves a sliver of headroom.
-      const opts = { padL: 44, padR: 14, padT: 14, padB: 28, w, h, yMin: 3.5, yMax: 6.5,
-        yTicks: [4, 5, 6], yLabel: '‖z_t‖', xLabel: 't' };
+      // Distance from the fixed shell. With ω = π/2, the linear midpoint is
+      // √d(1 - 1/√2) inside the shell, while slerp remains exactly on it.
+      const opts = { padL: 44, padR: 14, padT: 14, padB: 28, w, h, yMin: 0, yMax: 1.9,
+        yTicks: [0, 0.5, 1.0, 1.5], yLabel: '|‖z_t‖ - √d|', xLabel: 't' };
       clear(ctx);
       axes(ctx, opts);
-      // shell reference
-      ctx.save();
-      ctx.strokeStyle = '#94a3b8'; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
-      const yRef = opts.padT + (1 - (SHELL - opts.yMin) / (opts.yMax - opts.yMin)) * (h - opts.padT - opts.padB);
-      ctx.beginPath(); ctx.moveTo(opts.padL, yRef); ctx.lineTo(w - opts.padR, yRef); ctx.stroke();
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('√d', w - opts.padR - 18, yRef - 4);
-      ctx.restore();
-      plotLine(ctx, data.ts, data.normLin, { ...opts, color: '#dc2626' });
-      plotLine(ctx, data.ts, data.normSlerp, { ...opts, color: '#2563eb' });
-      dot(ctx, t, data.normLin[Math.round(t * 200)], '#dc2626', opts);
-      dot(ctx, t, SHELL, '#2563eb', opts);
-      legend(ctx, [['linear', '#dc2626', false], ['slerp', '#2563eb', false]], w - opts.padR - 70, opts.padT + 8);
+      plotLine(ctx, data.ts, data.normDistLin, { ...opts, color: '#dc2626' });
+      plotLine(ctx, data.ts, data.normDistSlerp, { ...opts, color: '#2563eb' });
+      dot(ctx, t, data.normDistLin[Math.round(t * 200)], '#dc2626', opts);
+      dot(ctx, t, 0, '#2563eb', opts);
+      legend(ctx, [['linear', '#dc2626', false], ['slerp = 0', '#2563eb', false]], w - opts.padR - 82, opts.padT + 8);
     }
     {
       const { ctx, w, h } = setupCanvas(cRad);

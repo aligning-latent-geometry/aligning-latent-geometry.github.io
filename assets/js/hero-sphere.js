@@ -1,87 +1,147 @@
-// hero-sphere.js — Three.js scene: sphere shell with two endpoints, a linear chord
-// that visibly cuts through the interior, and a slerp arc that hugs the surface.
-// Drives the side-panel plots via a shared t ∈ [0,1] scrubber.
+// hero-sphere.js — paired Three.js scenes for the opening four-part comparison.
+// Panel 1 shows a thin shell: points have radii in a narrow band, and linear
+// interpolation cuts through that band. Panel 2 shows the fixed-radius sphere
+// after projection, with slerp staying on the surface.
 
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
-const R = 2.0;                    // visible sphere radius (display only)
-// 90° matches the expected angle between two i.i.d. shell points in high d, and
-// makes the linear chord visibly dip to R/√2 ≈ 0.707·R inside the sphere.
-const OMEGA_DEG = 90;
-const OMEGA = (OMEGA_DEG * Math.PI) / 180;
-const SHELL_NOISE = 0.05;         // visual scatter band thickness
+const R = 2.0;
+const OMEGA = Math.PI / 2;
+const SHELL_HALF_WIDTH = 0.22;
+const COLORS = {
+  shell: 0x93a8bd,
+  sphere: 0x9db2c8,
+  noise: 0x0f172a,
+  data: 0x0f766e,
+  linear: 0xc2413a,
+  slerp: 0x256fb3,
+};
 
 function setupRenderer(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  const rect = container.getBoundingClientRect();
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(rect.width, rect.height, false);
+  const width = Math.max(1, container.clientWidth);
+  const height = Math.max(1, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  renderer.setSize(width, height, false);
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   container.appendChild(renderer.domElement);
   return renderer;
 }
 
-function makeShellPoints(n = 500) {
-  // Sample n points roughly on a thin shell around radius R.
-  const positions = new Float32Array(n * 3);
+function sampleDirection() {
+  let x, y, s;
+  do {
+    x = Math.random() * 2 - 1;
+    y = Math.random() * 2 - 1;
+    s = x * x + y * y;
+  } while (s >= 1);
+  const f = 2 * Math.sqrt(1 - s);
+  return new THREE.Vector3(x * f, y * f, 1 - 2 * s);
+}
+
+function makeSharedSamples(n = 900) {
+  const dirs = [];
+  const radii = [];
   for (let i = 0; i < n; i++) {
-    // Uniform on sphere via Marsaglia
-    let x, y, z, s;
-    do {
-      x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; s = x * x + y * y;
-    } while (s >= 1);
-    const f = 2 * Math.sqrt(1 - s);
-    const px = x * f, py = y * f, pz = 1 - 2 * s;
-    const r = R + (Math.random() - 0.5) * SHELL_NOISE * 2;
-    positions[i * 3] = px * r;
-    positions[i * 3 + 1] = py * r;
-    positions[i * 3 + 2] = pz * r;
+    dirs.push(sampleDirection());
+    radii.push(R - SHELL_HALF_WIDTH + Math.random() * SHELL_HALF_WIDTH * 2);
+  }
+  return { dirs, radii };
+}
+
+function makeCloudPoints(samples, mode) {
+  const n = samples.dirs.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  const innerColor = new THREE.Color(0x5b7188);
+  const outerColor = new THREE.Color(0x0f766e);
+  for (let i = 0; i < n; i++) {
+    const dir = samples.dirs[i];
+    const r = mode === 'shell' ? samples.radii[i] : R;
+    const bandT = (samples.radii[i] - (R - SHELL_HALF_WIDTH)) / (SHELL_HALF_WIDTH * 2);
+    positions[i * 3] = dir.x * r;
+    positions[i * 3 + 1] = dir.y * r;
+    positions[i * 3 + 2] = dir.z * r;
+    const c = innerColor.clone().lerp(outerColor, bandT);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ size: 0.035, color: 0x9aa6b8, transparent: true, opacity: 0.85 });
-  return new THREE.Points(geo, mat);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({
+    size: mode === 'shell' ? 0.058 : 0.056,
+    vertexColors: true,
+    transparent: true,
+    opacity: mode === 'shell' ? 0.86 : 0.94,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.renderOrder = 10;
+  return points;
 }
 
-function makeWireSphere() {
-  const geo = new THREE.SphereGeometry(R, 32, 16);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xb6c2d1, wireframe: true, transparent: true, opacity: 0.25 });
+function makeWireSphere(radius, color, opacity = 0.24) {
+  const geo = new THREE.SphereGeometry(radius, 36, 18);
+  const mat = new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity });
   return new THREE.Mesh(geo, mat);
 }
 
-// Place both endpoints exactly on a great circle of radius R in a plane tilted off
-// the equator. Building them in an orthonormal (e1, e2) frame guarantees that the
-// angle between them is exactly OMEGA, so slerp uses the correct ω with no drift.
-function endpoints() {
+function makeShellBand() {
+  const geo = new THREE.SphereGeometry(R, 44, 22);
+  const mat = new THREE.MeshBasicMaterial({ color: COLORS.shell, transparent: true, opacity: 0.035, depthWrite: false });
+  return new THREE.Mesh(geo, mat);
+}
+
+function makeSurfaceSphere() {
+  const geo = new THREE.SphereGeometry(R, 42, 22);
+  const mat = new THREE.MeshBasicMaterial({ color: COLORS.sphere, transparent: true, opacity: 0.025, depthWrite: false });
+  return new THREE.Mesh(geo, mat);
+}
+
+function makeEquator(radius, color, opacity = 0.32) {
+  const pts = [];
+  for (let i = 0; i <= 96; i++) {
+    const a = (i / 96) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * radius, 0, Math.sin(a) * radius));
+  }
+  return lineGeom(pts, color, opacity, true, 0.04, 0.04);
+}
+
+function endpointDirections() {
   const e1 = new THREE.Vector3(1, 0, 0);
-  const e2 = new THREE.Vector3(0, 0.55, 0.835).normalize();   // tilted off the equator
+  const e2 = new THREE.Vector3(0, 0.55, 0.835).normalize();
   const a = OMEGA / 2;
-  const z0 = e1.clone().multiplyScalar(R * Math.cos(-a)).addScaledVector(e2, R * Math.sin(-a));
-  const z1 = e1.clone().multiplyScalar(R * Math.cos( a)).addScaledVector(e2, R * Math.sin( a));
-  return [z0, z1];
+  return {
+    noiseDir: e1.clone().multiplyScalar(Math.cos(-a)).addScaledVector(e2, Math.sin(-a)).normalize(),
+    dataDir: e1.clone().multiplyScalar(Math.cos(a)).addScaledVector(e2, Math.sin(a)).normalize(),
+  };
 }
 
-function lineGeom(points, color, opacity = 1.0, dashed = false) {
-  const geo = new THREE.BufferGeometry().setFromPoints(points);
-  const mat = dashed
-    ? new THREE.LineDashedMaterial({ color, dashSize: 0.08, gapSize: 0.05, transparent: true, opacity })
-    : new THREE.LineBasicMaterial({ color, transparent: true, opacity, linewidth: 2 });
-  const line = new THREE.Line(geo, mat);
-  if (dashed) line.computeLineDistances();
-  return line;
+function endpoints() {
+  const { noiseDir, dataDir } = endpointDirections();
+  return {
+    noiseShell: noiseDir.clone().multiplyScalar(R + SHELL_HALF_WIDTH * 0.72),
+    dataShell: dataDir.clone().multiplyScalar(R - SHELL_HALF_WIDTH * 0.48),
+    noiseSphere: noiseDir.clone().multiplyScalar(R),
+    dataSphere: dataDir.clone().multiplyScalar(R),
+  };
 }
 
-function slerpVec(a, b, t, omega) {
-  const s0 = Math.sin((1 - t) * omega) / Math.sin(omega);
-  const s1 = Math.sin(t * omega) / Math.sin(omega);
-  return new THREE.Vector3(
-    s0 * a.x + s1 * b.x,
-    s0 * a.y + s1 * b.y,
-    s0 * a.z + s1 * b.z
-  );
+function slerpVec(a, b, t) {
+  const ah = a.clone().normalize();
+  const bh = b.clone().normalize();
+  const omega = Math.acos(Math.max(-1, Math.min(1, ah.dot(bh))));
+  const sinOmega = Math.sin(omega);
+  const s0 = Math.sin((1 - t) * omega) / sinOmega;
+  const s1 = Math.sin(t * omega) / sinOmega;
+  return ah.multiplyScalar(s0 * R).addScaledVector(bh, s1 * R);
 }
+
 function lerpVec(a, b, t) {
   return new THREE.Vector3(
     (1 - t) * a.x + t * b.x,
@@ -90,126 +150,209 @@ function lerpVec(a, b, t) {
   );
 }
 
-function makeMovingDot(color) {
-  const geo = new THREE.SphereGeometry(0.07, 16, 12);
-  const mat = new THREE.MeshBasicMaterial({ color });
-  return new THREE.Mesh(geo, mat);
+function lineGeom(points, color, opacity = 1, dashed = false, dashSize = 0.075, gapSize = 0.045) {
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = dashed
+    ? new THREE.LineDashedMaterial({ color, dashSize, gapSize, transparent: true, opacity })
+    : new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  const line = new THREE.Line(geo, mat);
+  if (dashed) line.computeLineDistances();
+  return line;
 }
 
-function makeEndpointDot(color) {
-  const geo = new THREE.SphereGeometry(0.085, 18, 14);
-  const mat = new THREE.MeshBasicMaterial({ color });
-  return new THREE.Mesh(geo, mat);
+function makeMarkerSprite(color, size = 0.36) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.beginPath();
+  ctx.arc(64, 64, 48, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(64, 64, 34, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#0f172a';
+  ctx.stroke();
+  const texture = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(size, size, size);
+  sprite.renderOrder = 30;
+  return sprite;
 }
 
-export function initHeroSphere(containerSel, opts) {
-  const container = document.querySelector(containerSel);
+function makeMovingDot(color, radius = 0.105) {
+  const geo = new THREE.SphereGeometry(radius, 22, 16);
+  const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 20;
+  return mesh;
+}
+
+function addEndpoint(scene, position, color) {
+  const marker = makeMarkerSprite(color);
+  marker.position.copy(position);
+  scene.add(marker);
+  return marker;
+}
+
+function setTopCamera(camera, width) {
+  const y = width < 520 ? 7.15 : 6.35;
+  const z = width < 520 ? 1.2 : 0.95;
+  camera.position.set(0.08, y, z);
+  camera.lookAt(0, 0, 0);
+}
+
+function makeScene(container, mode, pts, samples, opts = {}) {
   const loading = container.querySelector('.hero-anim-loading');
   if (loading) loading.remove();
 
-  const rect = container.getBoundingClientRect();
+  const width = Math.max(1, container.clientWidth);
+  const height = Math.max(1, container.clientHeight);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, rect.width / rect.height, 0.1, 100);
-  camera.position.set(4.2, 1.6, 4.6);
+  const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 100);
+  setTopCamera(camera, width);
 
   const renderer = setupRenderer(container);
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
   controls.enablePan = false;
-  controls.minDistance = 4; controls.maxDistance = 9;
-  controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
+  controls.minDistance = 4;
+  controls.maxDistance = 8;
+  controls.autoRotate = !opts.reducedMotion;
+  controls.autoRotateSpeed = 0.35;
 
-  scene.add(makeWireSphere());
-  scene.add(makeShellPoints(700));
-
-  const [z0, z1] = endpoints();
-  const epA = makeEndpointDot(0x111827); epA.position.copy(z0);
-  const epB = makeEndpointDot(0x111827); epB.position.copy(z1);
-  scene.add(epA, epB);
-
-  // Linear chord (red, dashed) — straight line in 3D
-  const linearLine = lineGeom([z0, z1], 0xdc2626, 0.85, true);
-  scene.add(linearLine);
-
-  // Slerp arc (blue, solid) — sampled along the geodesic
-  const arcPts = [];
-  for (let i = 0; i <= 64; i++) {
-    arcPts.push(slerpVec(z0, z1, i / 64, OMEGA));
+  if (mode === 'linear') {
+    scene.add(makeShellBand());
+    scene.add(makeWireSphere(R, COLORS.shell, 0.08));
+    scene.add(makeEquator(R, COLORS.shell, 0.24));
+    scene.add(makeCloudPoints(samples, 'shell'));
+    addEndpoint(scene, pts.noiseShell, COLORS.noise);
+    addEndpoint(scene, pts.dataShell, COLORS.data);
+    scene.add(lineGeom([pts.noiseShell, pts.dataShell], COLORS.linear, 0.95, true));
+  } else {
+    scene.add(makeSurfaceSphere());
+    scene.add(makeWireSphere(R, COLORS.sphere, 0.16));
+    scene.add(makeEquator(R, COLORS.sphere, 0.28));
+    scene.add(makeCloudPoints(samples, 'sphere'));
+    addEndpoint(scene, pts.noiseSphere, COLORS.noise);
+    addEndpoint(scene, pts.dataSphere, COLORS.data);
+    const arcPts = [];
+    for (let i = 0; i <= 80; i++) arcPts.push(slerpVec(pts.noiseSphere, pts.dataSphere, i / 80));
+    scene.add(lineGeom(arcPts, COLORS.slerp, 1, false));
   }
-  const slerpLine = lineGeom(arcPts, 0x2563eb, 0.95, false);
-  scene.add(slerpLine);
 
-  // Moving dots
-  const movingLin = makeMovingDot(0xdc2626);
-  const movingSlp = makeMovingDot(0x2563eb);
-  movingLin.position.copy(z0); movingSlp.position.copy(z0);
-  scene.add(movingLin, movingSlp);
+  const moving = makeMovingDot(mode === 'linear' ? COLORS.linear : COLORS.slerp, 0.105);
+  moving.position.copy(mode === 'linear' ? pts.noiseShell : pts.noiseSphere);
+  scene.add(moving);
 
-  // Animation state
-  let t = 0;
-  let playing = true;
+  function update(t) {
+    moving.position.copy(
+      mode === 'linear'
+        ? lerpVec(pts.noiseShell, pts.dataShell, t)
+        : slerpVec(pts.noiseSphere, pts.dataSphere, t)
+    );
+  }
+
+  function resize() {
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    setTopCamera(camera, width);
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+
+  function render() {
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  resize();
+
+  return { container, update, resize, render };
+}
+
+export function initHeroSphere(linearSel, slerpSel, opts) {
+  const linearContainer = document.querySelector(linearSel);
+  const slerpContainer = document.querySelector(slerpSel);
+  if (!linearContainer || !slerpContainer) return null;
+
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const pts = endpoints();
+  const samples = makeSharedSamples(900);
+  const linearScene = makeScene(linearContainer, 'linear', pts, samples, { reducedMotion: prefersReducedMotion });
+  const slerpScene = makeScene(slerpContainer, 'slerp', pts, samples, { reducedMotion: prefersReducedMotion });
+  const scenes = [linearScene, slerpScene];
+
+  let t = prefersReducedMotion ? 0.5 : 0;
+  let playing = !prefersReducedMotion;
   let lastFrame = performance.now();
-  const PERIOD_MS = 5500;          // one round trip
+  const PERIOD_MS = 5500;
 
   const tInput = document.querySelector('#hero-anim-t');
   const tVal = document.querySelector('#hero-anim-t-val');
   const toggle = document.querySelector('#hero-anim-toggle');
+  if (toggle && !playing) {
+    toggle.textContent = 'Play';
+    toggle.setAttribute('aria-pressed', 'false');
+  }
 
   function setT(newT) {
     t = Math.max(0, Math.min(1, newT));
-    movingLin.position.copy(lerpVec(z0, z1, t));
-    movingSlp.position.copy(slerpVec(z0, z1, t, OMEGA));
+    scenes.forEach(scene => scene.update(t));
     if (tInput) tInput.value = String(Math.round(t * 1000));
     if (tVal) tVal.textContent = t.toFixed(2);
     if (opts && typeof opts.onT === 'function') opts.onT(t);
   }
-  setT(0);
 
   tInput?.addEventListener('input', () => {
     playing = false;
-    if (toggle) { toggle.textContent = '▶ Play'; toggle.setAttribute('aria-pressed', 'false'); }
+    if (toggle) {
+      toggle.textContent = 'Play';
+      toggle.setAttribute('aria-pressed', 'false');
+    }
     setT(parseInt(tInput.value, 10) / 1000);
   });
 
   toggle?.addEventListener('click', () => {
     playing = !playing;
     if (toggle) {
-      toggle.textContent = playing ? '⏸ Pause' : '▶ Play';
+      toggle.textContent = playing ? 'Pause' : 'Play';
       toggle.setAttribute('aria-pressed', String(playing));
     }
     lastFrame = performance.now();
   });
 
-  // Resize handling
-  const onResize = () => {
-    const r = container.getBoundingClientRect();
-    renderer.setSize(r.width, r.height, false);
-    camera.aspect = r.width / r.height;
-    camera.updateProjectionMatrix();
-  };
-  window.addEventListener('resize', onResize);
+  window.addEventListener('resize', () => scenes.forEach(scene => scene.resize()));
 
-  // IntersectionObserver — only animate when on-screen
   let onScreen = true;
   const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => { onScreen = e.isIntersecting; });
-  }, { threshold: 0.05 });
-  io.observe(container);
+    onScreen = entries.some(entry => entry.isIntersecting);
+  }, { threshold: 0.03 });
+  scenes.forEach(scene => io.observe(scene.container));
 
   function loop(now) {
     requestAnimationFrame(loop);
     if (!onScreen) return;
     if (playing) {
-      const dt = now - lastFrame;
-      // Triangle wave so it ping-pongs back and forth.
       const phase = ((now / PERIOD_MS) % 2);
-      const newT = phase < 1 ? phase : 2 - phase;
-      setT(newT);
+      setT(phase < 1 ? phase : 2 - phase);
     }
     lastFrame = now;
-    controls.update();
-    renderer.render(scene, camera);
+    scenes.forEach(scene => scene.render());
   }
+
+  setT(0);
   requestAnimationFrame(loop);
 
   return { setT };

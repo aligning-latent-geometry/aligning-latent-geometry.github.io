@@ -41,6 +41,7 @@ export function initVelocityDecomp() {
   const canvas = document.querySelector('#vel-canvas');
   const barFill = document.querySelector('#vel-bar-fill');
   const barVal = document.querySelector('#vel-bar-val');
+  const toggle = document.querySelector('#vel-toggle');
   if (!canvas) return;
 
   // 2D toy endpoints — same OMEGA for both
@@ -49,6 +50,7 @@ export function initVelocityDecomp() {
   // Linear velocity is constant
   const u = { x: z1.x - z0.x, y: z1.y - z0.y };
   const uNorm2 = u.x * u.x + u.y * u.y;
+  const sinOmega = Math.sin(OMEGA);
 
   const PERIOD = 5000;
 
@@ -121,11 +123,29 @@ export function initVelocityDecomp() {
     arrow(ctx, ox, oy, uRad.x * VEL_SCALE, -uRad.y * VEL_SCALE, '#dc2626', 3);
     arrow(ctx, ox, oy, uTan.x * VEL_SCALE, -uTan.y * VEL_SCALE, '#2563eb', 3);
 
-    // Token marker
+    // Token marker (linear path)
     ctx.fillStyle = '#1d2939';
     ctx.beginPath(); ctx.arc(ox, oy, 6, 0, Math.PI * 2); ctx.fill();
 
-    // Radial share bar
+    // Slerp position and velocity at the same t (lives on the sphere)
+    const s0 = Math.sin((1 - t) * OMEGA) / sinOmega;
+    const s1 = Math.sin(t * OMEGA) / sinOmega;
+    const ds0 = -OMEGA * Math.cos((1 - t) * OMEGA) / sinOmega;
+    const ds1 =  OMEGA * Math.cos(t * OMEGA) / sinOmega;
+    const zSlerp = { x: s0 * z0.x + s1 * z1.x, y: s0 * z0.y + s1 * z1.y };
+    const vSlerp = { x: ds0 * z0.x + ds1 * z1.x, y: ds0 * z0.y + ds1 * z1.y };
+    const sx = cx + zSlerp.x, sy = cy - zSlerp.y;
+    arrow(ctx, sx, sy, vSlerp.x * VEL_SCALE, -vSlerp.y * VEL_SCALE, '#1d4ed8', 3);
+    // Open marker to distinguish from the filled linear marker
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1d4ed8';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Radial share bar (decomposition of the linear chord)
     const radShare = (radCoef * radCoef) / uNorm2;
     if (barFill) barFill.style.width = `${(radShare * 100).toFixed(1)}%`;
     if (barVal) barVal.textContent = `${(radShare * 100).toFixed(0)}%`;
@@ -139,9 +159,10 @@ export function initVelocityDecomp() {
     ctx.fillText('shell', cx + R - 36, cy - 6);
     // Velocity legend
     const lx = 12, ly = 18;
-    ctx.fillStyle = '#94a3b8'; ctx.fillText('— u (total velocity)', lx, ly);
+    ctx.fillStyle = '#94a3b8'; ctx.fillText('— u (linear total)', lx, ly);
     ctx.fillStyle = '#dc2626'; ctx.fillText('— u_radial (wasted)', lx, ly + 14);
     ctx.fillStyle = '#2563eb'; ctx.fillText('— u_tangential (used)', lx, ly + 28);
+    ctx.fillStyle = '#1d4ed8'; ctx.fillText('— v_slerp (tangent)',   lx, ly + 42);
   }
 
   // IntersectionObserver — only animate when on-screen
@@ -151,15 +172,33 @@ export function initVelocityDecomp() {
   }, { threshold: 0.05 });
   io.observe(canvas);
 
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let playing = !prefersReducedMotion;
+  let lastT = prefersReducedMotion ? 0.4 : 0;
+  let pauseT = lastT;
+
+  function syncToggle() {
+    if (!toggle) return;
+    toggle.textContent = playing ? 'Pause' : 'Play';
+    toggle.setAttribute('aria-pressed', String(playing));
+  }
+  syncToggle();
+  toggle?.addEventListener('click', () => {
+    playing = !playing;
+    if (!playing) pauseT = lastT;
+    syncToggle();
+  });
+
   function tick(now) {
     requestAnimationFrame(tick);
-    if (!onScreen) return;
+    if (!onScreen || !playing) return;
     let tt = ((now / PERIOD) % 2);
     if (tt > 1) tt = 2 - tt;
+    lastT = tt;
     draw(tt);
   }
-  draw(0);
+  draw(lastT);
   requestAnimationFrame(tick);
 
-  window.addEventListener('resize', () => draw(0));
+  window.addEventListener('resize', () => draw(playing ? lastT : pauseT));
 }
