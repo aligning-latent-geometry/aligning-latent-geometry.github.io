@@ -53,7 +53,7 @@
     <div class="hero-summary" aria-label="Summary">
       <span><strong>Observation 1.</strong> In high dimensions, VAE tokens and Gaussian noise concentrate on thin shells.</span>
       <span><strong>Observation 2.</strong> VAE decoders respond more to angular changes than radial changes.</span>
-      <span><strong>Method.</strong> Project existing VAE latents to a fixed radius and train flow matching on spherical paths.</span>
+      <span><strong>Method.</strong> Project VAE tokens and Gaussian noise to a fixed radius, then train flow matching along slerp paths.</span>
     </div>
   </header>
 
@@ -63,8 +63,8 @@
         <h2>Linear vs. spherical transport</h2>
         <p>
           Latent flow matching usually connects Gaussian noise to a VAE latent with a Euclidean chord. Both endpoints
-          live near a sphere, so the chord cuts through radii that neither endpoint naturally occupies. The fix is to
-          put both endpoints on the same token-wise sphere and train along the spherical arc.
+          concentrate in thin spherical shells, so the chord cuts through radii that neither endpoint naturally
+          occupies. The fix is to put both endpoints on the same token-wise sphere and train along the spherical arc.
         </p>
       </div>
 
@@ -123,24 +123,30 @@
             <span class="item-index">01</span>
             <h3>Linear paths leave the latent support.</h3>
             <p>
-              Token norms along the actual training paths show the mismatch. Linear interpolation between noise and data
-              moves away from the endpoint shells; spherical-slerp stays on the fixed support at every timestep. Note
-              that how shell-like a tokenizer is before any intervention varies a lot — FLUX.2 and VA-VAE land near
-              \(\bar r/\sqrt d \approx 0.94\)–\(0.95\), while REPA-E sits at \(\approx 0.35\). Per-token projection
-              fixes this uniformly across all three.
+              Per-token norms concentrate tightly across all three tokenizers (\(\text{CV} \le 0.23\)), and
+              concentration is preserved through preprocessing. After preprocessing, FLUX.2 and VA-VAE sit close to the
+              Gaussian shell (\(\bar r/\sqrt d = 0.94\) and \(0.95\)), while REPA-E FLUX.1 sits well below
+              (\(\bar r/\sqrt d = 0.35\)). Spherical projection collapses all three to \(\bar r/\sqrt d = 1\) with
+              \(\text{CV} = 0\): preprocessing is partial, projection is universal. Linear paths deviate up to
+              \(1.4\sigma\) (FLUX.2), \(1.8\sigma\) (VA-VAE), and \(2.5\sigma\) (REPA-E FLUX.1) from the nearest
+              endpoint, placing supervision on latents the training distribution rarely produces. Slerp keeps
+              \(\|z_t\| = \sqrt d\) throughout the flow.
             </p>
           </div>
           <div class="paper-observation-grid" aria-label="Measurements of latent path support">
             <figure class="figure-clean">
               <img src="assets/figures/latent_norm_all.png"
                 alt="Per-token latent norms along linear, shell, and spherical-slerp paths for three tokenizers">
-              <figcaption>Per-token norm along linear, shell-baseline (linear radius, slerp direction), and
-                spherical-slerp paths across FLUX.2, VA-VAE, and REPA-E FLUX.1.</figcaption>
+              <figcaption>Per-token norm along linear, shell, and slerp paths for representative tokenizers. Lines
+                average 2048 pairs; bands show \(\pm 1\sigma\); the horizontal reference is the fixed spherical
+                radius.</figcaption>
             </figure>
             <figure class="figure-clean">
               <img src="assets/figures/latent_ood_all.png"
                 alt="Off-shell distance in standard deviations for linear, shell, and spherical-slerp paths">
-              <figcaption>Off-shell distance from endpoint support. The straight path is the outlier.</figcaption>
+              <figcaption>Off-shell distance for each path, in standard deviations from the nearest endpoint shell.
+                Larger values indicate latent regions rarely occupied by either endpoint; slerp remains at the fixed
+                spherical radius.</figcaption>
             </figure>
           </div>
         </article>
@@ -150,8 +156,10 @@
             <span class="item-index">02</span>
             <h3>Direction carries content.</h3>
             <p>
-              Component swaps show an asymmetric decoder response: changing direction changes the image, while changing
-              radius is much closer to identity.
+              Keeping the anchor direction (radius swapped to a same-class neighbor) leaves the decoded image close to
+              the anchor, whereas keeping the anchor radius (direction swapped) moves it almost as far as replacing the
+              whole latent with the neighbor — an asymmetry visible on both LPIPS and DINOv2 distances. The decoder is
+              much more sensitive to direction than to radius.
             </p>
           </div>
           <figure class="figure-clean">
@@ -166,8 +174,11 @@
             <span class="item-index">03</span>
             <h3>Linear targets waste radial budget.</h3>
             <p>
-              The flow target can be decomposed into radial and tangential components. Slerp removes radial velocity by
-              construction.
+              Linear flow matching allocates substantial supervision to radial motion, a component to which the decoder
+              is less sensitive. Decomposing the per-token velocity target into radial and tangential components yields
+              an endpoint-dependent radial share — about 50% at both endpoints for FLUX.2 and VA-VAE, and reaching
+              about 90% at the noise endpoint for REPA-E FLUX.1, whose data shell radius falls farthest below
+              \(\sqrt d\). Slerp on the sphere makes it identically zero by construction.
             </p>
           </div>
           <figure class="figure-clean">
@@ -207,9 +218,9 @@
       <div class="section-heading">
         <h2>Spherical flow matching</h2>
         <p>
-          Building a spherical support — token projection plus a decoder finetune plus drawing noise on the same
-          shell — already closes most of the gap with vanilla linear flow matching. Replacing the chord with the slerp
-          geodesic on top gives the best observed trajectory. The diffusion architecture and conditioning stay
+          Building a spherical support — token projection, decoder/discriminator finetuning, and drawing noise on the
+          same sphere — already closes most of the gap with vanilla linear flow matching. Replacing the chord with the
+          slerp geodesic on top gives the best observed trajectory. The diffusion architecture and conditioning stay
           unchanged.
         </p>
       </div>
@@ -218,8 +229,8 @@
         <article>
           <span class="item-index">1</span>
           <h3>Project tokens to a fixed radius.</h3>
-          <p>\(z_{i,j} \leftarrow \sqrt d \cdot z_{i,j} / \|z_{i,j}\|\). The encoder stays frozen; only the decoder is
-            finetuned to decode projected latents.</p>
+          <p>\(z_{i,j} \leftarrow \sqrt d \cdot z_{i,j} / \|z_{i,j}\|\). The encoder stays frozen; the decoder and
+            discriminator are finetuned to decode projected latents.</p>
         </article>
         <article>
           <span class="item-index">2</span>
@@ -334,8 +345,8 @@
         <figure class="qual-figure qual-recon">
           <img src="assets/figures/recon_flux2_3way.jpg"
             alt="FLUX.2 reconstruction comparison: original, finetuned vanilla, and spherical">
-          <figcaption>FLUX.2 reconstruction: original / finetuned vanilla / spherical. Spherical decoding has a small
-            reconstruction overhead that is paid back at generation.</figcaption>
+          <figcaption>FLUX.2 reconstruction: original / finetuned vanilla / spherical. The reconstructions are visually
+            near-identical; generation quality depends on the latent geometry.</figcaption>
         </figure>
         <figure class="qual-figure qual-swap">
           <img src="assets/figures/ablation_grid_flux2_sameclass.png"
