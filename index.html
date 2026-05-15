@@ -119,18 +119,15 @@
 
       <div class="evidence-grid">
         <article class="evidence-item">
-          <div>
+          <div class="evidence-copy-wide">
             <span class="item-index">01</span>
             <h3>Linear paths leave the latent support.</h3>
             <p>
-              Per-token norms concentrate tightly across all three tokenizers (\(\text{CV} \le 0.23\)), and
-              concentration is preserved through preprocessing. After preprocessing, FLUX.2 and VA-VAE sit close to the
-              Gaussian shell (\(\bar r/\sqrt d = 0.94\) and \(0.95\)), while REPA-E FLUX.1 sits well below
-              (\(\bar r/\sqrt d = 0.35\)). Spherical projection collapses all three to \(\bar r/\sqrt d = 1\) with
-              \(\text{CV} = 0\): preprocessing is partial, projection is universal. Linear paths deviate up to
-              \(1.4\sigma\) (FLUX.2), \(1.8\sigma\) (VA-VAE), and \(2.5\sigma\) (REPA-E FLUX.1) from the nearest
-              endpoint, placing supervision on latents the training distribution rarely produces. Slerp keeps
-              \(\|z_t\| = \sqrt d\) throughout the flow.
+              Per-token norms concentrate tightly across all three tokenizers (\(\text{CV} \le 0.23\)). After
+              preprocessing, FLUX.2 and VA-VAE sit close to the Gaussian shell (\(\bar r/\sqrt d = 0.94\) and
+              \(0.95\)), while REPA-E FLUX.1 sits well below it (\(\bar r/\sqrt d = 0.35\)). Projection puts every token
+              at \(\sqrt d\). Linear paths then deviate up to \(1.4\sigma\), \(1.8\sigma\), and \(2.5\sigma\) from the
+              nearest endpoint shell; slerp stays on the fixed radius throughout the flow.
             </p>
           </div>
           <div class="paper-observation-grid" aria-label="Measurements of latent path support">

@@ -438,12 +438,21 @@ figcaption {
 
 .evidence-item:first-child {
   grid-column: 1 / -1;
+  gap: 1.3rem;
 }
 
 .paper-observation-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.6rem;
+  gap: 1rem;
+  width: min(100%, 660px);
+  margin: 0.1rem auto 0;
+}
+
+.paper-observation-grid figcaption {
+  max-width: 78ch;
+  margin-right: auto;
+  margin-left: auto;
 }
 
 .item-index {
@@ -466,6 +475,10 @@ figcaption {
 .vel-side p {
   max-width: 62ch;
   font-size: 0.96rem;
+}
+
+.evidence-copy-wide p {
+  max-width: none;
 }
 
 .figure-clean {
@@ -552,10 +565,14 @@ figcaption {
 }
 
 .method-figure {
-  margin: 1rem 0 0;
+  width: min(100%, 760px);
+  margin: 1rem auto 0;
 }
 
 .method-figure figcaption {
+  max-width: 78ch;
+  margin-right: auto;
+  margin-left: auto;
   text-align: center;
 }
 
