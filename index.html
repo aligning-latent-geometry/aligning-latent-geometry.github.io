@@ -224,6 +224,26 @@
           flow-training coordinates. Linear paths spend substantial supervision on radial motion; slerp has zero radial
           velocity by construction.</figcaption>
       </figure>
+
+      <div class="vel-demo" aria-label="Live velocity decomposition along a linear chord">
+        <div class="vel-canvas-wrap">
+          <canvas id="vel-canvas" width="640" height="360"></canvas>
+        </div>
+        <div class="vel-side">
+          <h4>Velocity decomposition, live</h4>
+          <p>The token moves along a straight line between two shell points. Its velocity vector decomposes into a
+             <span class="vel-tag vel-rad">radial</span> part that changes its distance from the origin (wasted —
+             the decoder barely reads it) and a <span class="vel-tag vel-tan">tangential</span> part that changes
+             its direction (the part the decoder actually uses).</p>
+          <div class="vel-bar-wrap">
+            <span>radial share</span>
+            <div class="vel-bar"><div id="vel-bar-fill"></div></div>
+            <strong id="vel-bar-val">0%</strong>
+          </div>
+          <p class="vel-note">Slerp on the sphere is the dashed blue arc. By construction its velocity is purely
+             tangential — radial share is identically zero.</p>
+        </div>
+      </div>
     </section>
 
     <section class="section" id="method">
@@ -653,9 +673,11 @@
     import { initHeroPlots } from './assets/js/hero-plots.js';
     import { initHeroSphere } from './assets/js/hero-sphere.js';
     import { initConcentrationDemo } from './assets/js/concentration-demo.js';
+    import { initVelocityDecomp } from './assets/js/velocity-decomp.js';
     const plots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
     initHeroSphere('#hero-anim-sphere', { onT: (t) => plots.update(t) });
     initConcentrationDemo();
+    initVelocityDecomp();
   </script>
 </body>
 
