@@ -1,18 +1,6 @@
 // hero-plots.js — Canvas2D plots for the hero side panel.
 // Exports an init() that wires up two canvases and returns an update(t) function.
 
-function themeColors() {
-  const css = getComputedStyle(document.documentElement);
-  const v = (name, fallback) => (css.getPropertyValue(name).trim() || fallback);
-  return {
-    ink:    v('--ink',    '#101828'),
-    muted:  v('--muted',  '#475467'),
-    line:   v('--line',   '#e4e7ec'),
-    accent: v('--accent', '#2563eb'),
-    danger: '#dc2626',
-  };
-}
-
 const D = 32;             // example latent token dimension (matches FLUX.2/VA-VAE)
 const SHELL = Math.sqrt(D);
 // In high d, two i.i.d. shell points are nearly orthogonal (expected angle ≈ π/2).
@@ -64,11 +52,11 @@ function precompute(n = 200) {
 function clear(ctx) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 }
-function axes(ctx, opts, colors) {
+function axes(ctx, opts) {
   const { padL, padR, padT, padB, w, h, yMin, yMax, yTicks, yLabel, xLabel } = opts;
   ctx.save();
-  ctx.strokeStyle = colors.line;
-  ctx.fillStyle = colors.muted;
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.fillStyle = '#475467';
   ctx.font = '11px Inter, sans-serif';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -116,7 +104,7 @@ function dot(ctx, x, y, color, opts) {
   ctx.fillStyle = color;
   ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
 }
-function legend(ctx, items, x, y, colors) {
+function legend(ctx, items, x, y) {
   ctx.save();
   ctx.font = '11px Inter, sans-serif';
   let cy = y;
@@ -124,7 +112,7 @@ function legend(ctx, items, x, y, colors) {
     ctx.strokeStyle = color; ctx.lineWidth = 2;
     if (dashed) ctx.setLineDash([5, 4]); else ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + 22, cy); ctx.stroke();
-    ctx.fillStyle = colors.ink;
+    ctx.fillStyle = '#101828';
     ctx.fillText(label, x + 28, cy + 4);
     cy += 14;
   });
@@ -149,7 +137,6 @@ export function initHeroPlots(normSel, radialSel) {
 
   function drawAll(t) {
     lastT = t;
-    const colors = themeColors();
     {
       const { ctx, w, h } = setupCanvas(cNorm);
       // With ω = π/2 and √d ≈ 5.66, the linear midpoint norm is √d/√2 ≈ 4.0; the
@@ -157,37 +144,36 @@ export function initHeroPlots(normSel, radialSel) {
       const opts = { padL: 44, padR: 14, padT: 14, padB: 28, w, h, yMin: 3.5, yMax: 6.5,
         yTicks: [4, 5, 6], yLabel: '‖z_t‖', xLabel: 't' };
       clear(ctx);
-      axes(ctx, opts, colors);
+      axes(ctx, opts);
       // shell reference
       ctx.save();
-      ctx.strokeStyle = colors.muted; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+      ctx.strokeStyle = '#94a3b8'; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
       const yRef = opts.padT + (1 - (SHELL - opts.yMin) / (opts.yMax - opts.yMin)) * (h - opts.padT - opts.padB);
       ctx.beginPath(); ctx.moveTo(opts.padL, yRef); ctx.lineTo(w - opts.padR, yRef); ctx.stroke();
-      ctx.fillStyle = colors.muted;
+      ctx.fillStyle = '#64748b';
       ctx.fillText('√d', w - opts.padR - 18, yRef - 4);
       ctx.restore();
-      plotLine(ctx, data.ts, data.normLin, { ...opts, color: colors.danger });
-      plotLine(ctx, data.ts, data.normSlerp, { ...opts, color: colors.accent });
-      dot(ctx, t, data.normLin[Math.round(t * 200)], colors.danger, opts);
-      dot(ctx, t, SHELL, colors.accent, opts);
-      legend(ctx, [['linear', colors.danger, false], ['slerp', colors.accent, false]], w - opts.padR - 70, opts.padT + 8, colors);
+      plotLine(ctx, data.ts, data.normLin, { ...opts, color: '#dc2626' });
+      plotLine(ctx, data.ts, data.normSlerp, { ...opts, color: '#2563eb' });
+      dot(ctx, t, data.normLin[Math.round(t * 200)], '#dc2626', opts);
+      dot(ctx, t, SHELL, '#2563eb', opts);
+      legend(ctx, [['linear', '#dc2626', false], ['slerp', '#2563eb', false]], w - opts.padR - 70, opts.padT + 8);
     }
     {
       const { ctx, w, h } = setupCanvas(cRad);
       const opts = { padL: 44, padR: 14, padT: 14, padB: 28, w, h, yMin: 0, yMax: 1,
         yTicks: [0, 0.25, 0.5, 0.75, 1.0], yLabel: 'radial share', xLabel: 't' };
       clear(ctx);
-      axes(ctx, opts, colors);
-      plotLine(ctx, data.ts, data.radLin, { ...opts, color: colors.danger });
-      plotLine(ctx, data.ts, data.radSlerp, { ...opts, color: colors.accent });
-      dot(ctx, t, data.radLin[Math.round(t * 200)], colors.danger, opts);
-      dot(ctx, t, 0, colors.accent, opts);
-      legend(ctx, [['linear', colors.danger, false], ['slerp = 0', colors.accent, false]], w - opts.padR - 70, opts.padT + 8, colors);
+      axes(ctx, opts);
+      plotLine(ctx, data.ts, data.radLin, { ...opts, color: '#dc2626' });
+      plotLine(ctx, data.ts, data.radSlerp, { ...opts, color: '#2563eb' });
+      dot(ctx, t, data.radLin[Math.round(t * 200)], '#dc2626', opts);
+      dot(ctx, t, 0, '#2563eb', opts);
+      legend(ctx, [['linear', '#dc2626', false], ['slerp = 0', '#2563eb', false]], w - opts.padR - 70, opts.padT + 8);
     }
   }
 
   drawAll(0);
   window.addEventListener('resize', () => drawAll(lastT));
-  window.addEventListener('theme:changed', () => drawAll(lastT));
   return { update: drawAll, data };
 }

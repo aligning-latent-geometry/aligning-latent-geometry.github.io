@@ -35,7 +35,6 @@
       <a href="#method">Method</a>
       <a href="#results">Results</a>
       <a href="#citation">Cite</a>
-      <button id="theme-toggle" class="page-nav-btn" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
     </nav>
     <header class="hero" id="top">
       <p class="venue">Preprint 2026</p>
@@ -679,30 +678,6 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bibtex.min.js"></script>
-  <script>
-    (function () {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-      }
-      document.addEventListener('DOMContentLoaded', () => {
-        const btn = document.getElementById('theme-toggle');
-        if (!btn) return;
-        const sync = () => {
-          const dark = document.documentElement.classList.contains('dark');
-          btn.textContent = dark ? '☀️' : '🌙';
-        };
-        sync();
-        btn.addEventListener('click', () => {
-          document.documentElement.classList.toggle('dark');
-          const dark = document.documentElement.classList.contains('dark');
-          localStorage.setItem('theme', dark ? 'dark' : 'light');
-          sync();
-          window.dispatchEvent(new CustomEvent('theme:changed'));
-        });
-      });
-    })();
-  </script>
   <script type="module">
     import { initHeroPlots } from './assets/js/hero-plots.js';
     import { initHeroSphere } from './assets/js/hero-sphere.js';

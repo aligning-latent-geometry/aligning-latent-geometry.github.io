@@ -5,8 +5,6 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 const R = 2.0;                    // visible sphere radius (display only)
 // 90° matches the expected angle between two i.i.d. shell points in high d, and
 // makes the linear chord visibly dip to R/√2 ≈ 0.707·R inside the sphere.
@@ -119,7 +117,7 @@ export function initHeroSphere(containerSel, opts) {
   controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.enablePan = false;
   controls.minDistance = 4; controls.maxDistance = 9;
-  controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = 0.7;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
 
   scene.add(makeWireSphere());
   scene.add(makeShellPoints(700));
@@ -149,7 +147,7 @@ export function initHeroSphere(containerSel, opts) {
 
   // Animation state
   let t = 0;
-  let playing = !reduceMotion;
+  let playing = true;
   let lastFrame = performance.now();
   const PERIOD_MS = 5500;          // one round trip
 
@@ -165,7 +163,7 @@ export function initHeroSphere(containerSel, opts) {
     if (tVal) tVal.textContent = t.toFixed(2);
     if (opts && typeof opts.onT === 'function') opts.onT(t);
   }
-  setT(reduceMotion ? 0.5 : 0);
+  setT(0);
 
   tInput?.addEventListener('input', () => {
     playing = false;
@@ -173,13 +171,7 @@ export function initHeroSphere(containerSel, opts) {
     setT(parseInt(tInput.value, 10) / 1000);
   });
 
-  if (toggle) {
-    toggle.textContent = playing ? '⏸ Pause' : '▶ Play';
-    toggle.setAttribute('aria-pressed', String(playing));
-  }
-
   toggle?.addEventListener('click', () => {
-    if (reduceMotion) return;
     playing = !playing;
     if (toggle) {
       toggle.textContent = playing ? '⏸ Pause' : '▶ Play';
@@ -206,7 +198,7 @@ export function initHeroSphere(containerSel, opts) {
 
   function loop(now) {
     requestAnimationFrame(loop);
-    if (!onScreen || reduceMotion) return;
+    if (!onScreen) return;
     if (playing) {
       const dt = now - lastFrame;
       // Triangle wave so it ping-pongs back and forth.
@@ -218,11 +210,7 @@ export function initHeroSphere(containerSel, opts) {
     controls.update();
     renderer.render(scene, camera);
   }
-  if (!reduceMotion) requestAnimationFrame(loop);
-  else {
-    controls.update();
-    renderer.render(scene, camera);
-  }
+  requestAnimationFrame(loop);
 
   return { setT };
 }
