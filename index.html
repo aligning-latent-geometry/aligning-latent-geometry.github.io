@@ -73,6 +73,30 @@
         </article>
       </div>
 
+      <div class="hero-anim-grid" id="hero-anim" aria-label="Animated comparison of linear and spherical-slerp paths">
+        <div class="hero-anim-canvas" id="hero-anim-sphere">
+          <div class="hero-anim-loading">Loading 3D scene…</div>
+        </div>
+        <div class="hero-anim-plots">
+          <figure class="hero-anim-plot">
+            <canvas id="hero-plot-norm" width="520" height="180"></canvas>
+            <figcaption>‖z<sub>t</sub>‖ along the path. Linear (red) dips below the shell radius √d; slerp (blue) stays on it.</figcaption>
+          </figure>
+          <figure class="hero-anim-plot">
+            <canvas id="hero-plot-radial" width="520" height="180"></canvas>
+            <figcaption>Instantaneous radial share of the velocity target. Linear spends ~50%+ of its budget on radial motion; slerp is identically zero.</figcaption>
+          </figure>
+          <div class="hero-anim-controls">
+            <button id="hero-anim-toggle" class="hero-anim-btn" aria-pressed="true">⏸ Pause</button>
+            <label class="hero-anim-scrubber">
+              <span>t</span>
+              <input id="hero-anim-t" type="range" min="0" max="1000" step="1" value="0" />
+              <span id="hero-anim-t-val">0.00</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div class="figure-triple" aria-label="Latent transport comparison">
         <figure>
           <img src="assets/figures/1a_vanilla_linear.png" alt="Linear flow matching cuts through the shell interior">

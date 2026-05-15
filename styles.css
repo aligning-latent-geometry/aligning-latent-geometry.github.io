@@ -686,3 +686,62 @@ code {
   white-space: pre;
 
 }
+
+/* Hero animation block */
+.hero-anim-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 1.1rem;
+  margin: 1rem auto 1.4rem;
+  max-width: var(--maxw);
+  align-items: stretch;
+}
+.hero-anim-canvas {
+  position: relative;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #f4f7fb 70%);
+  overflow: hidden;
+}
+.hero-anim-canvas canvas { display: block; width: 100%; height: 100%; }
+.hero-anim-loading {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  color: var(--muted); font-size: 0.92rem;
+}
+.hero-anim-plots {
+  display: flex; flex-direction: column; gap: 0.75rem;
+}
+.hero-anim-plot { margin: 0; }
+.hero-anim-plot canvas {
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.hero-anim-plot figcaption {
+  font-size: 0.84rem; line-height: 1.45;
+  margin-top: 0.35rem; text-align: left;
+}
+.hero-anim-controls {
+  display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;
+  padding: 0.45rem 0.5rem; border: 1px solid var(--line); border-radius: 8px;
+  background: #f8faff;
+}
+.hero-anim-btn {
+  border: 1px solid #1d2939; background: #1d2939; color: #fff;
+  font: inherit; font-weight: 600; font-size: 0.86rem;
+  padding: 0.3rem 0.7rem; border-radius: 999px; cursor: pointer;
+}
+.hero-anim-scrubber {
+  display: flex; align-items: center; gap: 0.5rem; flex: 1;
+  font-size: 0.82rem; color: var(--muted);
+}
+.hero-anim-scrubber input[type="range"] { flex: 1; }
+#hero-anim-t-val { font-variant-numeric: tabular-nums; min-width: 3ch; }
+@media (max-width: 800px) {
+  .hero-anim-grid { grid-template-columns: 1fr; }
+  .hero-anim-canvas { min-height: 320px; }
+}
