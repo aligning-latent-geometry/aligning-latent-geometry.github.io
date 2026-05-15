@@ -622,7 +622,9 @@
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bibtex.min.js"></script>
   <script type="module">
     import { initHeroPlots } from './assets/js/hero-plots.js';
-    window.__heroPlots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
+    import { initHeroSphere } from './assets/js/hero-sphere.js';
+    const plots = initHeroPlots('#hero-plot-norm', '#hero-plot-radial');
+    initHeroSphere('#hero-anim-sphere', { onT: (t) => plots.update(t) });
   </script>
 </body>
 
