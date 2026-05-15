@@ -1,6 +1,18 @@
 // concentration-demo.js — d-slider, scatter + histogram of ||z||.
 // Box-Muller for Gaussian samples; pre-generates 256-dim samples once and slices.
 
+function themeColors() {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => (css.getPropertyValue(name).trim() || fallback);
+  return {
+    ink:    v('--ink',    '#101828'),
+    muted:  v('--muted',  '#475467'),
+    line:   v('--line',   '#e4e7ec'),
+    accent: v('--accent', '#2563eb'),
+    danger: '#dc2626',
+  };
+}
+
 const N = 800;
 const DIMS = [2, 4, 8, 16, 32, 64, 128, 256];
 const MAX_D = 256;
@@ -42,12 +54,12 @@ function setupCanvas(canvas) {
   return { ctx, w: rect.width, h: rect.height };
 }
 
-function drawScatter(canvas, samples, d, shell) {
+function drawScatter(canvas, samples, d, shell, colors) {
   const { ctx, w, h } = setupCanvas(canvas);
   ctx.clearRect(0, 0, w, h);
   // Background gridlines
   ctx.save();
-  ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+  ctx.strokeStyle = colors.line; ctx.lineWidth = 1;
   for (let g = -4; g <= 4; g++) {
     const x = w / 2 + (g / 4) * (w * 0.42);
     const y = h / 2 + (g / 4) * (h * 0.42);
@@ -68,7 +80,7 @@ function drawScatter(canvas, samples, d, shell) {
     ctx.fill();
   }
   // Annotate
-  ctx.fillStyle = '#475467'; ctx.font = '11px Inter, sans-serif';
+  ctx.fillStyle = colors.muted; ctx.font = '11px Inter, sans-serif';
   ctx.fillText(`first 2 of d=${d} coords`, 8, 14);
   ctx.fillText(`√d = ${shell.toFixed(2)}`, w - 70, 14);
 }
@@ -94,7 +106,7 @@ function sampleCV(norms) {
   return Math.sqrt(variance) / mean;
 }
 
-function drawHist(canvas, norms, d) {
+function drawHist(canvas, norms, d, colors) {
   const { ctx, w, h } = setupCanvas(canvas);
   ctx.clearRect(0, 0, w, h);
   const padL = 36, padR = 12, padT = 14, padB = 38;
@@ -110,7 +122,7 @@ function drawHist(canvas, norms, d) {
   const maxCount = Math.max(...counts);
   const norm = maxCount > 0 ? 1 / maxCount : 0;
   // Axes
-  ctx.strokeStyle = '#cbd5e1'; ctx.fillStyle = '#475467'; ctx.font = '11px Inter, sans-serif';
+  ctx.strokeStyle = colors.line; ctx.fillStyle = colors.muted; ctx.font = '11px Inter, sans-serif';
   ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, h - padB);
   ctx.lineTo(w - padR, h - padB); ctx.stroke();
   for (let v = 0; v <= xMax; v += 4) {
@@ -130,13 +142,13 @@ function drawHist(canvas, norms, d) {
   const shell = Math.sqrt(d);
   const xShell = padL + (shell / xMax) * innerW;
   ctx.save();
-  ctx.strokeStyle = '#dc2626'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
+  ctx.strokeStyle = colors.danger; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(xShell, padT); ctx.lineTo(xShell, h - padB); ctx.stroke();
   ctx.restore();
-  ctx.fillStyle = '#dc2626';
+  ctx.fillStyle = colors.danger;
   ctx.fillText(`√d ≈ ${shell.toFixed(2)}`, xShell + 4, padT + 10);
   // Label
-  ctx.fillStyle = '#475467';
+  ctx.fillStyle = colors.muted;
   ctx.fillText('‖z‖', w - padR - 24, h - padB - 4);
 
   // VAE comparison band underneath the plot. Show the Gaussian CV at the current d
@@ -145,7 +157,7 @@ function drawHist(canvas, norms, d) {
   const gCV = gaussianCV(d);
   const ssCV = sampleCV(norms);
   ctx.font = '11px Inter, sans-serif';
-  ctx.fillStyle = '#475467';
+  ctx.fillStyle = colors.muted;
   const yLine = h - 14;
   ctx.fillText(
     `Gaussian d=${d}: CV ≈ ${gCV.toFixed(3)} (sampled ${ssCV.toFixed(3)})  |  `
@@ -163,16 +175,18 @@ export function initConcentrationDemo() {
   const samples = makeSamples();
 
   function render() {
+    const colors = themeColors();
     const idx = parseInt(slider.value, 10);
     const d = DIMS[idx];
     const shell = Math.sqrt(d);
     dVal.textContent = String(d);
     shellOut.textContent = shell.toFixed(2);
     const norms = normUpToD(samples, d);
-    drawScatter(scatter, samples, d, shell);
-    drawHist(hist, norms, d);
+    drawScatter(scatter, samples, d, shell, colors);
+    drawHist(hist, norms, d, colors);
   }
   slider.addEventListener('input', render);
   window.addEventListener('resize', render);
+  window.addEventListener('theme:changed', render);
   render();
 }
